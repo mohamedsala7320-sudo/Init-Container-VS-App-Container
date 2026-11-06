@@ -1,0 +1,51 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: production-demo-app
+  labels:
+    app: demo-web
+spec:
+  replicas: 2 #==>deploy pods on the worker nodes 
+  selector:
+    matchLabels:
+      app: demo-web
+  template:
+    metadata:
+      labels:
+        app: demo-web
+    spec:
+      # --------------------------------------------------------
+      # Shared Volume to transfere data between the Init and app container
+      # --------------------------------------------------------
+      volumes:
+      - name: config-volume
+        emptyDir: {}
+
+      # --------------------------------------------------------
+      # 1. INIT CONTAINERS
+      # --------------------------------------------------------
+      initContainers:
+      # Init 1: wiat for the data base be ready
+      - name: wait-for-db
+        image: busybox:1.36
+        command: ['sh', '-c', 'echo "Checking Database connection..."; sleep 10; echo "DB is READY!"']
+
+      # Init 2: write the config file in the shared volume
+      - name: fetch-config
+        image: busybox:1.36
+        command: ['sh', '-c', 'echo "<h1>Welcome from Production App - Config Loaded via InitContainer</h1>" > /work-dir/index.html']
+        volumeMounts:
+        - name: config-volume
+          mountPath: /work-dir
+
+      # --------------------------------------------------------
+      # 2. MAIN APP CONTAINER ===> Only run after inis success 
+      # --------------------------------------------------------
+      containers:
+      - name: web-app
+        image: nginx:alpine
+        ports:
+        - containerPort: 80
+        volumeMounts:
+        - name: config-volume
+          mountPath: /usr/share/nginx/html #Replace the main page on init container with the config file 
